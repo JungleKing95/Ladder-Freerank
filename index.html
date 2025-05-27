@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>사다리타기 게임 (업그레이드)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6; /* bg-gray-100 */
+        }
+        .control-button {
+            transition: background-color 0.2s ease-in-out, transform 0.1s ease-in-out;
+        }
+        .control-button:active {
+            transform: translateY(1px);
+        }
+        canvas {
+            cursor: pointer;
+            border-radius: 0.375rem; /* rounded-md */
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06); /* shadow-lg */
+        }
+        /* 모달 스타일 */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            opacity: 0;
+            visibility: hidden;
+            transition: opacity 0.3s ease, visibility 0.3s ease;
+        }
+        .modal-overlay.active {
+            opacity: 1;
+            visibility: visible;
+        }
+        .modal-content {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 500px;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        .modal-close-btn {
+            background-color: #ef4444; /* red-500 */
+            color: white;
+        }
+        .modal-close-btn:hover {
+            background-color: #dc2626; /* red-600 */
+        }
+         .modal-action-btn { /* For clear history button */
+            background-color: #3b82f6; /* blue-500 */
+            color: white;
+        }
+        .modal-action-btn:hover {
+            background-color: #2563eb; /* blue-600 */
+        }
+
+
+        @media (max-width: 640px) {
+            h1 {
+                font-size: 1.25rem; /* text-xl */
+            }
+            .control-button {
+                padding: 0.5rem 0.75rem; 
+                font-size: 0.875rem;
+            }
+            textarea {
+                font-size: 0.875rem;
+            }
+            .modal-content {
+                padding: 15px;
+            }
+        }
+    </style>
+</head>
+<body class="p-2 sm:p-4">
+    <div class="container mx-auto max-w-3xl bg-white shadow-xl rounded-lg p-4 sm:p-6">
+        <header class="text-center mb-6">
+            <h1 class="text-2xl sm:text-3xl font-bold text-purple-600">⭐ 정글왕 정글#KR9의 운명의 사다리 ⭐</h1>
+        </header>
+
+        <main>
+            <div class="grid md:grid-cols-2 gap-4 sm:gap-6 mb-6">
+                <div>
+                    <label for="participantsInput" class="block text-sm font-medium text-gray-700 mb-1">참가자 (한 줄에 한 명)</label>
+                    <textarea id="participantsInput" rows="4" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 text-sm sm:text-base" placeholder="예시)&#10;메&#10;로&#10;모"></textarea>
+                </div>
+                <div>
+                    <label for="resultsInput" class="block text-sm font-medium text-gray-700 mb-1">결과/벌칙 (한 줄에 한 명)</label>
+                    <textarea id="resultsInput" rows="4" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 text-sm sm:text-base" placeholder="예시)&#10;결과A&#10;결과B&#10;결과C"></textarea>
+                </div>
+            </div>
+
+            <div class="mb-6 px-4">
+                <label for="volumeControl" class="block text-sm font-medium text-gray-700 mb-2 text-center">음량 조절</label>
+                <input type="range" id="volumeControl" min="0" max="100" value="80" class="w-full max-w-xs mx-auto h-2 bg-gray-300 rounded-lg appearance-none cursor-pointer accent-purple-600 block focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2">
+            </div>
+
+            <div class="text-center mb-6 space-x-2 sm:space-x-3 flex flex-wrap justify-center gap-2">
+                <button id="createLadderBtn" class="control-button bg-purple-600 hover:bg-purple-700 text-white font-semibold py-2 px-4 rounded-md shadow-md">
+                    사다리 생성
+                </button>
+                <button id="showAllResultsBtn" class="control-button bg-green-500 hover:bg-green-600 text-white font-semibold py-2 px-4 rounded-md shadow-md">
+                    모든 결과 보기
+                </button>
+                <button id="showHistoryBtn" class="control-button bg-blue-500 hover:bg-blue-600 text-white font-semibold py-2 px-4 rounded-md shadow-md">
+                    히스토리 보기
+                </button>
+                <button id="resetBtn" class="control-button bg-gray-500 hover:bg-gray-600 text-white font-semibold py-2 px-4 rounded-md shadow-md">
+                    초기화
+                </button>
+            </div>
+            
+            <div id="errorMessage" class="text-red-600 text-center mb-4 text-sm h-5"></div>
+            <div id="connectionMessage" class="text-center text-base sm:text-lg font-medium text-purple-700 mt-2 mb-4 h-8"></div>
+
+            <div class="w-full overflow-x-auto mb-6 bg-gray-50 p-2 rounded-lg shadow-inner">
+                <canvas id="ladderCanvas" class="border-0"></canvas>
+            </div>
+        </main>
+    </div>
+
+    <div id="resultsModal" class="modal-overlay">
+        <div class="modal-content">
+            <h3 class="text-xl font-semibold mb-4 text-gray-800">전체 결과</h3>
+            <div id="allResultsContent" class="text-gray-700 space-y-1"></div>
+            <button id="closeModalBtn" class="modal-close-btn font-semibold py-2 px-4 rounded-md mt-6 w-full control-button">
+                닫기
+            </button>
+        </div>
+    </div>
+
+    <div id="historyModal" class="modal-overlay">
+        <div class="modal-content">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-semibold text-gray-800">플레이 히스토리</h3>
+                <button id="clearHistoryBtn" class="modal-action-btn font-semibold py-1 px-3 rounded-md text-sm control-button">
+                    히스토리 초기화
+                </button>
+            </div>
+            <div id="historyContent" class="text-gray-700 space-y-1"></div>
+            <button id="closeHistoryModalBtn" class="modal-close-btn font-semibold py-2 px-4 rounded-md mt-6 w-full control-button">
+                닫기
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // DOM Element Selection
+        const participantsInput = document.getElementById('participantsInput');
+        const resultsInput = document.getElementById('resultsInput');
+        const createLadderBtn = document.getElementById('createLadderBtn');
+        const resetBtn = document.getElementById('resetBtn');
+        const showAllResultsBtn = document.getElementById('showAllResultsBtn');
+        const showHistoryBtn = document.getElementById('showHistoryBtn'); 
+        const ladderCanvas = document.getElementById('ladderCanvas');
+        const ctx = ladderCanvas.getContext('2d');
+        const errorMessage = document.getElementById('errorMessage');
+        const connectionMessage = document.getElementById('connectionMessage');
+        
+        const resultsModal = document.getElementById('resultsModal');
+        const allResultsContent = document.getElementById('allResultsContent');
+        const closeModalBtn = document.getElementById('closeModalBtn');
+
+        const historyModal = document.getElementById('historyModal'); 
+        const historyContent = document.getElementById('historyContent');
+        const closeHistoryModalBtn = document.getElementById('closeHistoryModalBtn');
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn'); // Clear history button
+
+        const volumeSlider = document.getElementById('volumeControl');
+
+        // Game State Variables
+        let participants = [];
+        let results = [];
+        let numPlayers = 0;
+        let rungs = []; 
+        let calculatedPaths = []; 
+        let gameHistory = []; 
+
+        // Animation and Sound State
+        let isAnimating = false; 
+        let pathAnimationId = null;
+        let explosionAnimationId = null;
+        let currentHighlightedPath = null; 
+        let toneStarted = false;
+        let melodySynth, explosionSynth, noiseSynth;
+        let textAnimationStates = []; 
+
+        // --- Ladder Configuration ---
+        const CANVAS_MIN_WIDTH = 300; 
+        const BASE_CANVAS_HEIGHT = 300; 
+        const TEXT_AREA_HEIGHT = 45;  
+        const LADDER_INTERNAL_PADDING = 25; 
+        const MIN_RUNGS_PER_GAP = 5; 
+        
+        // Colors and Styles
+        const VERTICAL_LINE_COLOR = '#cbd5e1'; 
+        const RUNG_COLOR = '#94a3b8'; 
+        const HIGHLIGHT_PATH_COLOR = '#db2777'; 
+        const TEXT_COLOR_HEX = '#374151'; 
+        const HIGHLIGHT_TEXT_COLOR_HEX = '#8b5cf6'; 
+        const TEXT_FONT = 'bold 14px Inter, sans-serif';
+        const TEXT_BASELINE = 'middle';
+
+        // Drawing Parameters
+        const LINE_THICKNESS = 3; 
+        const HIGHLIGHT_THICKNESS = 5;
+        const RUNG_MIN_Y_GAP = 20; 
+        const PATH_ANIMATION_DURATION = 2000; 
+        const EXPLOSION_DURATION = 500; 
+        const TEXT_COLOR_ANIMATION_DURATION = 500;
+
+        // Calculated dimensions
+        let totalCanvasHeight = BASE_CANVAS_HEIGHT + 2 * TEXT_AREA_HEIGHT;
+        let ladderDrawTopY, ladderDrawBottomY, ladderDrawHeight;
+
+        // --- Date/Time Utility ---
+        function getCurrentDateTime() {
+            const now = new Date();
+            const year = now.getFullYear();
+            const month = String(now.getMonth() + 1).padStart(2, '0');
+            const day = String(now.getDate()).padStart(2, '0');
+            const hours = String(now.getHours()).padStart(2, '0');
+            const minutes = String(now.getMinutes()).padStart(2, '0');
+            const seconds = String(now.getSeconds()).padStart(2, '0');
+            return {
+                date: `${year}-${month}-${day}`,
+                time: `${hours}:${minutes}:${seconds}`
+            };
+        }
+
+        // --- Color Utility Functions ---
+        function hexToRgb(hex){const r=/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);return r?{r:parseInt(r[1],16),g:parseInt(r[2],16),b:parseInt(r[3],16)}:null;}
+        function rgbToHex(r,g,b){return"#"+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1).padStart(6,'0');}
+        function interpolateColor(c1,c2,f){const r1=hexToRgb(c1),r2=hexToRgb(c2);if(!r1||!r2)return c1;const r=Math.round(r1.r+f*(r2.r-r1.r)),g=Math.round(r1.g+f*(r2.g-r1.g)),b=Math.round(r1.b+f*(r2.b-r1.b));return rgbToHex(r,g,b);}
+        
+        // --- Dimension Calculation Functions ---
+        function updateCalculatedDimensions(){totalCanvasHeight=BASE_CANVAS_HEIGHT+2*TEXT_AREA_HEIGHT;ladderDrawTopY=TEXT_AREA_HEIGHT+LADDER_INTERNAL_PADDING;ladderDrawBottomY=totalCanvasHeight-TEXT_AREA_HEIGHT-LADDER_INTERNAL_PADDING;ladderDrawHeight=ladderDrawBottomY-ladderDrawTopY;}
+        function getLineSpacing(cw,pc){return pc<=1?(cw-2*LADDER_INTERNAL_PADDING):(cw-2*LADDER_INTERNAL_PADDING)/(pc-1);}
+        function getLineX(li,ls){return LADDER_INTERNAL_PADDING+li*ls;}
+
+        // --- Sound Synthesis (Tone.js) ---
+        function initializeSynths(){if(!melodySynth)melodySynth=new Tone.PolySynth(Tone.Synth,{oscillator:{type:"pulse",width:0.4},envelope:{attack:0.01,decay:0.2,sustain:0.1,release:0.2},volume:-10}).toDestination();if(!explosionSynth)explosionSynth=new Tone.MembraneSynth({pitchDecay:0.08,octaves:3,oscillator:{type:"sine"},envelope:{attack:0.001,decay:0.5,sustain:0.01,release:0.5,attackCurve:"exponential"},volume:-5}).toDestination();if(!noiseSynth)noiseSynth=new Tone.NoiseSynth({noise:{type:'white'},envelope:{attack:0.005,decay:0.1,sustain:0},volume:-15}).toDestination();}
+        let soundInterval=null,melodyNotes=['C5','E5','G5','C6','G5','E5','C5','D5','F5','A5','C6','A5','F5','D5'],currentMelodyNoteIndex=0;
+        function playLadderSound(){if(!toneStarted||!melodySynth||pathAnimationId===null)return;stopLadderSound();currentMelodyNoteIndex=0;const nd='16n',it=Tone.Time(nd).toMilliseconds()*1.2;soundInterval=setInterval(()=>{if(pathAnimationId===null){stopLadderSound();return;}const n=melodyNotes[currentMelodyNoteIndex%melodyNotes.length];melodySynth.triggerAttackRelease(n,nd);currentMelodyNoteIndex++;},it);}
+        function stopLadderSound(){if(soundInterval){clearInterval(soundInterval);soundInterval=null;}if(melodySynth){melodySynth.releaseAll();}}
+        function playExplosionSound(){if(!toneStarted||!explosionSynth||!noiseSynth)return;const nw=Tone.now();explosionSynth.triggerAttackRelease("C2","8n",nw);noiseSynth.triggerAttackRelease("16n",nw+0.02);}
+        async function startToneContext(){if(!toneStarted){try{await Tone.start();initializeSynths();toneStarted=true;console.log("Audio Context started");Tone.Master.volume.value=(parseFloat(volumeSlider.value)/100)*30-30;}catch(e){console.error("Error starting Tone.js:",e);}}}
+        if(volumeSlider)volumeSlider.addEventListener('input',(e)=>{if(toneStarted)Tone.Master.volume.value=(e.target.value/100)*30-30;});
+
+        // --- Text Color Animation ---
+        function startTextColorAnimation(idx,type,targetHex,duration,onComplete=()=>{}){const id=`${type}-${idx}-${Date.now()}`;textAnimationStates=textAnimationStates.filter(a=>!(a.index===idx&&a.type===type));textAnimationStates.push({id,index:idx,type,startTime:performance.now(),duration,startColor:TEXT_COLOR_HEX,targetColor:targetHex,onComplete});function animate(now){const anim=textAnimationStates.find(a=>a.id===id);if(!anim)return;const el=now-anim.startTime,prog=Math.min(el/anim.duration,1);drawLadderBase();if(prog<1)requestAnimationFrame(animate);else{textAnimationStates=textAnimationStates.filter(a=>a.id!==id);anim.onComplete();drawLadderBase();}}requestAnimationFrame(animate);}
+
+        // --- Drawing Functions ---
+        function drawLadderBase(){ctx.clearRect(0,0,ladderCanvas.width,ladderCanvas.height);if(numPlayers===0)return;const ls=getLineSpacing(ladderCanvas.width,numPlayers);ctx.lineCap='round';ctx.font=TEXT_FONT;ctx.textAlign='center';ctx.textBaseline=TEXT_BASELINE;for(let i=0;i<numPlayers;i++){const x=getLineX(i,ls);let c=TEXT_COLOR_HEX;const an=textAnimationStates.find(a=>a.index===i&&a.type==='participant');if(an){const p=Math.min((performance.now()-an.startTime)/an.duration,1);c=interpolateColor(an.startColor,an.targetColor,p);}ctx.fillStyle=c;ctx.fillText(participants[i]||`P ${i+1}`,x,TEXT_AREA_HEIGHT/2);}for(let i=0;i<numPlayers;i++){const x=getLineX(i,ls);let c=TEXT_COLOR_HEX;const an=textAnimationStates.find(a=>a.index===i&&a.type==='result');if(an){const p=Math.min((performance.now()-an.startTime)/an.duration,1);c=interpolateColor(an.startColor,an.targetColor,p);}ctx.fillStyle=c;ctx.fillText(results[i]||`R ${i+1}`,x,totalCanvasHeight-TEXT_AREA_HEIGHT/2);}ctx.lineWidth=LINE_THICKNESS;for(let i=0;i<numPlayers;i++){const x=getLineX(i,ls);ctx.strokeStyle=VERTICAL_LINE_COLOR;ctx.beginPath();ctx.moveTo(x,ladderDrawTopY);ctx.lineTo(x,ladderDrawBottomY);ctx.stroke();}ctx.strokeStyle=RUNG_COLOR;for(const rg of rungs){const x1=getLineX(rg.leftLineIndex,ls),x2=getLineX(rg.leftLineIndex+1,ls);ctx.beginPath();ctx.moveTo(x1,rg.y);ctx.lineTo(x2,rg.y);ctx.stroke();}if(currentHighlightedPath&&pathAnimationId===null&&explosionAnimationId===null){ctx.strokeStyle=HIGHLIGHT_PATH_COLOR;ctx.lineWidth=HIGHLIGHT_THICKNESS;ctx.beginPath();ctx.moveTo(currentHighlightedPath[0].x,currentHighlightedPath[0].y);for(let i=1;i<currentHighlightedPath.length;i++)ctx.lineTo(currentHighlightedPath[i].x,currentHighlightedPath[i].y);ctx.stroke();}}
+
+        // --- Ladder Generation Logic ---
+        function generateRungs(){rungs=[];if(numPlayers<=1)return;updateCalculatedDimensions();function addRungInGap(gapIdx,targetY){const conflict=rungs.some(eR=>{if(eR.leftLineIndex===gapIdx&&eR.y===targetY)return true;if(eR.leftLineIndex===gapIdx&&Math.abs(eR.y-targetY)<RUNG_MIN_Y_GAP)return true;if(eR.leftLineIndex===gapIdx-1&&Math.abs(eR.y-targetY)<RUNG_MIN_Y_GAP/1.5)return true;if(eR.leftLineIndex===gapIdx+1&&Math.abs(eR.y-targetY)<RUNG_MIN_Y_GAP/1.5)return true;return false;});if(!conflict){rungs.push({y:targetY,leftLineIndex:gapIdx});return true;}return false;}for(let gapIndex=0;gapIndex<numPlayers-1;gapIndex++){let rungsInThisGap=0,attemptsForGap=0;const MAX_ATTEMPTS_PER_GAP=MIN_RUNGS_PER_GAP*20;while(rungsInThisGap<MIN_RUNGS_PER_GAP&&attemptsForGap<MAX_ATTEMPTS_PER_GAP){let yPos=ladderDrawTopY+RUNG_MIN_Y_GAP/2+Math.random()*(ladderDrawHeight-RUNG_MIN_Y_GAP);yPos=Math.round(yPos);if(addRungInGap(gapIndex,yPos))rungsInThisGap++;attemptsForGap++;}if(rungsInThisGap<MIN_RUNGS_PER_GAP){for(let i=rungsInThisGap;i<MIN_RUNGS_PER_GAP;i++){let yPForced=ladderDrawTopY+RUNG_MIN_Y_GAP/2+Math.random()*(ladderDrawHeight-RUNG_MIN_Y_GAP);yPForced=Math.round(yPForced);rungs.push({y:yPForced,leftLineIndex:gapIndex});}}}rungs.sort((a,b)=>a.y-b.y);}
+
+        // --- Path Tracing Logic ---
+        function tracePath(slIdx){if(numPlayers===0)return{endLine:0,pathCoords:[]};let cl=slIdx,cy=ladderDrawTopY;const ls=getLineSpacing(ladderCanvas.width,numPlayers),pth=[{x:getLineX(cl,ls),y:cy}];for(const rg of rungs){if(rg.y>cy&&rg.y<=ladderDrawBottomY){if(rg.leftLineIndex===cl){pth.push({x:getLineX(cl,ls),y:rg.y});cy=rg.y;cl++;pth.push({x:getLineX(cl,ls),y:cy});}else if(rg.leftLineIndex===cl-1){pth.push({x:getLineX(cl,ls),y:rg.y});cy=rg.y;cl--;pth.push({x:getLineX(cl,ls),y:cy});}}}pth.push({x:getLineX(cl,ls),y:ladderDrawBottomY});return{endLine:cl,pathCoords:pth};}
+
+        // --- Animation Functions ---
+        function animatePath(pathToAnimate, onComplete){ 
+            if(pathToAnimate.length<2){if(onComplete)onComplete();return;}
+            pathAnimationId=-1;playLadderSound();let st=null;const ns=pathToAnimate.length-1;
+            function step(ts){
+                if(!st)st=ts;const el=ts-st,prog=Math.min(el/PATH_ANIMATION_DURATION,1);
+                drawLadderBase();
+                ctx.strokeStyle=HIGHLIGHT_PATH_COLOR;ctx.lineWidth=HIGHLIGHT_THICKNESS;ctx.lineCap='round';
+                ctx.beginPath();ctx.moveTo(pathToAnimate[0].x,pathToAnimate[0].y);
+                const tpltd=prog*ns;
+                for(let i=0;i<ns;i++){const p1=pathToAnimate[i],p2=pathToAnimate[i+1];if(i<Math.floor(tpltd))ctx.lineTo(p2.x,p2.y);else if(i===Math.floor(tpltd)){const sp=tpltd-Math.floor(tpltd);ctx.lineTo(p1.x+(p2.x-p1.x)*sp,p1.y+(p2.y-p1.y)*sp);break;}else break;}
+                ctx.stroke();
+                if(prog<1)pathAnimationId=requestAnimationFrame(step);
+                else{pathAnimationId=null;stopLadderSound();drawLadderBase(); 
+                    ctx.strokeStyle=HIGHLIGHT_PATH_COLOR;ctx.lineWidth=HIGHLIGHT_THICKNESS; 
+                    ctx.beginPath();ctx.moveTo(pathToAnimate[0].x,pathToAnimate[0].y);
+                    for(let i=1;i<pathToAnimate.length;i++)ctx.lineTo(pathToAnimate[i].x,pathToAnimate[i].y);
+                    ctx.stroke();
+                    if(onComplete)onComplete();
+                }
+            }
+            pathAnimationId=requestAnimationFrame(step);
+        }
+        
+        function animateExplosion(tx,ty, onExplosionComplete){
+            if(explosionAnimationId) cancelAnimationFrame(explosionAnimationId);
+            playExplosionSound();
+            let st=null;const ps=[],pc=30,cs=["#FFC300","#FF5733","#C70039","#900C3F","#F9A825"];
+            for(let i=0;i<pc;i++){const a=Math.random()*Math.PI*2,s=Math.random()*3+1;ps.push({x:tx,y:ty,vx:Math.cos(a)*s,vy:Math.sin(a)*s,radius:Math.random()*4+2,alpha:1,color:cs[Math.floor(Math.random()*cs.length)]});}
+            
+            function step(ts){
+                if(!st)st=ts;
+                const el=ts-st,prog=el/EXPLOSION_DURATION;
+                drawLadderBase(); 
+                if(currentHighlightedPath){ 
+                    ctx.strokeStyle=HIGHLIGHT_PATH_COLOR;ctx.lineWidth=HIGHLIGHT_THICKNESS;ctx.lineCap='round';
+                    ctx.beginPath();ctx.moveTo(currentHighlightedPath[0].x,currentHighlightedPath[0].y);
+                    for(let i=1;i<currentHighlightedPath.length;i++)ctx.lineTo(currentHighlightedPath[i].x,currentHighlightedPath[i].y);
+                    ctx.stroke();
+                }
+                ps.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.alpha=1-prog;p.radius*=(1-prog*0.02);if(p.alpha>0){ctx.beginPath();ctx.arc(p.x,p.y,Math.max(0,p.radius),0,Math.PI*2);let ah=Math.floor(p.alpha*255).toString(16).padStart(2,'0');if(ah.length>2)ah='ff';ctx.fillStyle=`${p.color}${ah}`;ctx.fill();}});
+                
+                if(prog<1){
+                    explosionAnimationId=requestAnimationFrame(step);
+                } else {
+                    explosionAnimationId=null;
+                    // No longer setting isAnimating = false here. It's managed by the calling sequence.
+                    drawLadderBase(); 
+                    if(currentHighlightedPath){ 
+                         ctx.strokeStyle=HIGHLIGHT_PATH_COLOR;ctx.lineWidth=HIGHLIGHT_THICKNESS;
+                         ctx.beginPath();ctx.moveTo(currentHighlightedPath[0].x,currentHighlightedPath[0].y);
+                         for(let i=1;i<currentHighlightedPath.length;i++)ctx.lineTo(currentHighlightedPath[i].x,currentHighlightedPath[i].y);
+                         ctx.stroke();
+                    }
+                    if (onExplosionComplete) onExplosionComplete();
+                }
+            }
+            explosionAnimationId=requestAnimationFrame(step);
+        }
+
+        function stopAllAnimations(){if(pathAnimationId)cancelAnimationFrame(pathAnimationId);if(explosionAnimationId)cancelAnimationFrame(explosionAnimationId);textAnimationStates=[];pathAnimationId=null;explosionAnimationId=null;isAnimating=false;stopLadderSound();}
+
+        // --- Canvas Setup and Event Handling ---
+        function setupCanvas(){updateCalculatedDimensions();const cw=ladderCanvas.parentElement.clientWidth;ladderCanvas.width=Math.max(CANVAS_MIN_WIDTH,cw);ladderCanvas.height=totalCanvasHeight;}
+
+        async function handleCanvasClick(event) {
+            await startToneContext(); 
+            if (isAnimating || numPlayers === 0) return; 
+
+            const rect = ladderCanvas.getBoundingClientRect();
+            const x = event.clientX - rect.left; const y = event.clientY - rect.top;
+            const lineSpacing = getLineSpacing(ladderCanvas.width, numPlayers);
+            let clickedLineIndex = -1;
+
+            for (let i = 0; i < numPlayers; i++) {
+                const lineXVal = getLineX(i, lineSpacing);
+                if (Math.abs(x - lineXVal) < lineSpacing / 2) { clickedLineIndex = i; break; }
+            }
+            if (clickedLineIndex === -1) return; 
+
+            const clickedAreaIsTop = y < ladderDrawTopY;
+            const clickedAreaIsBottom = y > ladderDrawBottomY && y < totalCanvasHeight;
+            if (!clickedAreaIsTop && !clickedAreaIsBottom) return;
+
+            stopAllAnimations(); 
+            isAnimating = true; 
+            connectionMessage.textContent = '';
+            currentHighlightedPath = null; 
+            drawLadderBase(); 
+
+            let pathInfo, actualHighlightStartIndex, actualHighlightEndIndex, pathCoordsForAnimation;
+
+            if (clickedAreaIsTop) {
+                pathInfo = calculatedPaths.find(p => p.start === clickedLineIndex);
+                if (pathInfo) {
+                    actualHighlightStartIndex = clickedLineIndex; actualHighlightEndIndex = pathInfo.end;
+                    pathCoordsForAnimation = pathInfo.coords; 
+                    currentHighlightedPath = [...pathInfo.coords]; 
+                    startTextColorAnimation(actualHighlightStartIndex, 'participant', HIGHLIGHT_TEXT_COLOR_HEX, TEXT_COLOR_ANIMATION_DURATION);
+                }
+            } else { 
+                pathInfo = calculatedPaths.find(p => p.end === clickedLineIndex);
+                if (pathInfo) {
+                    actualHighlightStartIndex = pathInfo.start; actualHighlightEndIndex = clickedLineIndex;
+                    pathCoordsForAnimation = pathInfo.coords; 
+                    currentHighlightedPath = [...pathInfo.coords]; 
+                    startTextColorAnimation(actualHighlightEndIndex, 'result', HIGHLIGHT_TEXT_COLOR_HEX, TEXT_COLOR_ANIMATION_DURATION);
+                }
+            }
+
+            if (pathInfo && pathCoordsForAnimation) {
+                let animationPathToShow = [...pathCoordsForAnimation]; 
+                if (clickedAreaIsBottom) {
+                    animationPathToShow.reverse(); 
+                }
+
+                animatePath(animationPathToShow, () => { 
+                    const explosionX = getLineX(actualHighlightStartIndex, lineSpacing); 
+                    const explosionY = TEXT_AREA_HEIGHT / 2; 
+                    
+                    animateExplosion(explosionX, explosionY, () => { 
+                        let participantAnimDone = false;
+                        let resultAnimDone = false;
+                        const checkAndShowMessage = () => {
+                            if (participantAnimDone && resultAnimDone) {
+                                connectionMessage.textContent = `${participants[actualHighlightStartIndex]} ➔ ${results[actualHighlightEndIndex]}`;
+                                if (results[actualHighlightEndIndex] !== "통과") {
+                                    const { date, time } = getCurrentDateTime();
+                                    gameHistory.push({
+                                        date, time,
+                                        participant: participants[actualHighlightStartIndex],
+                                        result: results[actualHighlightEndIndex]
+                                    });
+                                }
+                                isAnimating = false; 
+                            }
+                        };
+                        startTextColorAnimation(actualHighlightStartIndex, 'participant', HIGHLIGHT_TEXT_COLOR_HEX, TEXT_COLOR_ANIMATION_DURATION, () => {
+                            participantAnimDone = true; checkAndShowMessage();
+                        });
+                        startTextColorAnimation(actualHighlightEndIndex, 'result', HIGHLIGHT_TEXT_COLOR_HEX, TEXT_COLOR_ANIMATION_DURATION, () => {
+                            resultAnimDone = true; checkAndShowMessage();
+                        });
+                    });
+                });
+            } else {
+                 currentHighlightedPath = null; 
+                 isAnimating = false; 
+                 drawLadderBase(); 
+            }
+        }
+        ladderCanvas.addEventListener('click', handleCanvasClick);
+
+        // --- Button Event Listeners ---
+        createLadderBtn.addEventListener('click', async () => {
+            await startToneContext(); 
+            stopAllAnimations();
+            
+            participants = participantsInput.value.split('\n').map(s => s.trim()).filter(s => s);
+            let rawResultsInput = resultsInput.value.split('\n').map(s => s.trim()).filter(s => s);
+
+            if (participants.length < 2 ) { errorMessage.textContent = '참가자는 2명 이상 입력해주세요.'; return; }
+            
+            results = [];
+            const numParticipants = participants.length;
+            const numActualResults = rawResultsInput.length;
+
+            if (numActualResults < numParticipants) {
+                const numPasses = numParticipants - numActualResults;
+                const passesBefore = Math.floor(numPasses / 2);
+                const passesAfter = numPasses - passesBefore;
+
+                for(let i = 0; i < passesBefore; i++) results.push("통과");
+                results.push(...rawResultsInput);
+                for(let i = 0; i < passesAfter; i++) results.push("통과");
+            } else if (numActualResults > numParticipants) {
+                 errorMessage.textContent = '참가자보다 결과 수가 많을 수 없습니다. 동일하거나 적게 입력해주세요.'; return;
+            } else {
+                results = [...rawResultsInput];
+            }
+            
+            errorMessage.textContent = ''; numPlayers = participants.length;
+            setupCanvas(); generateRungs();
+            calculatedPaths = []; 
+            for (let i = 0; i < numPlayers; i++) {
+                const pathResult = tracePath(i);
+                calculatedPaths.push({ start: i, end: pathResult.endLine, coords: pathResult.pathCoords });
+            }
+            currentHighlightedPath = null; connectionMessage.textContent = ''; 
+            drawLadderBase(); 
+        });
+
+        resetBtn.addEventListener('click', () => {
+            stopAllAnimations();
+            participantsInput.value = "메\n로\n모\n미\n붕"; 
+            resultsInput.value = "결과A\n결과B\n결과C\n결과D\n결과E";
+            participants = []; results = []; numPlayers = 0; rungs = []; calculatedPaths = [];
+            // gameHistory = []; // History is not cleared on general reset, only via specific button
+            currentHighlightedPath = null; errorMessage.textContent = ''; connectionMessage.textContent = '';
+            setupCanvas(); ctx.clearRect(0,0,ladderCanvas.width,ladderCanvas.height);
+        });
+
+        showAllResultsBtn.addEventListener('click',async()=>{await startToneContext();if(numPlayers===0||calculatedPaths.length===0){errorMessage.textContent='먼저 사다리를 생성해주세요.';return;}errorMessage.textContent='';allResultsContent.innerHTML='';const ul=document.createElement('ul');ul.className='list-disc list-inside space-y-2';calculatedPaths.forEach(p=>{const pn=participants[p.start]||`P ${p.start+1}`,rn=results[p.end]||`R ${p.end+1}`;const li=document.createElement('li');li.textContent=`${pn}  ➔  ${rn}`;ul.appendChild(li);});allResultsContent.appendChild(ul);resultsModal.classList.add('active');});
+        closeModalBtn.addEventListener('click',()=>resultsModal.classList.remove('active'));
+        resultsModal.addEventListener('click',(e)=>{if(e.target===resultsModal)resultsModal.classList.remove('active');});
+
+        // History Modal Listeners
+        showHistoryBtn.addEventListener('click', async () => {
+            await startToneContext();
+            historyContent.innerHTML = ''; 
+            if (gameHistory.length === 0) {
+                historyContent.textContent = '플레이 히스토리가 없습니다.';
+            } else {
+                const ul = document.createElement('ul');
+                ul.className = 'list-disc list-inside space-y-2 text-sm';
+                [...gameHistory].reverse().forEach(entry => {
+                    const li = document.createElement('li');
+                    li.textContent = `[${entry.date} ${entry.time}] ${entry.participant} ➔ ${entry.result}`;
+                    ul.appendChild(li);
+                });
+                historyContent.appendChild(ul);
+            }
+            historyModal.classList.add('active');
+        });
+        clearHistoryBtn.addEventListener('click', () => {
+            gameHistory = [];
+            historyContent.textContent = '플레이 히스토리가 없습니다.';
+            // Optionally, keep the modal open or close it:
+            // historyModal.classList.remove('active'); 
+        });
+        closeHistoryModalBtn.addEventListener('click', () => historyModal.classList.remove('active'));
+        historyModal.addEventListener('click', (event) => {
+            if (event.target === historyModal) {
+                historyModal.classList.remove('active');
+            }
+        });
+
+
+        window.addEventListener('resize',()=>{stopAllAnimations();setupCanvas();currentHighlightedPath=null;connectionMessage.textContent='';drawLadderBase();});
+        
+        // --- Initial Setup ---
+        setupCanvas(); 
+        participantsInput.value = "메\n로\n모\n미\n붕";
+        resultsInput.value = "결과A\n결과B\n결과C\n결과D\n결과E";
+        if(volumeSlider)volumeSlider.value="80";
+        drawLadderBase();
+
+    </script>
+</body>
+</html>
