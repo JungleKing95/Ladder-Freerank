@@ -67,6 +67,28 @@
             background-color: #2563eb; /* blue-600 */
         }
 
+        .game-container {
+            position: relative; /* Needed for z-index of pseudo-element */
+            background-color: rgba(255, 255, 255, 0.85); /* Semi-transparent white background for content readability */
+            overflow: hidden; /* Ensure pseudo-element respects border-radius */
+        }
+
+        .game-container::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-image: url('https://raw.githubusercontent.com/JungleKing95/Audiofile/main/FxpiOZpOnXwHNDgA1ci2FVSI6-zHytumeRhZkPcyLpkYwPCxQJEIZWgma7ppWawTfbg8cFtb2lkWF8QhW5jj5ymPSLqXFVNrKm0kxpTUxzj1L3Cc-0zBH7PhJDyx72pgSkpKXoperKtOKI5Q18i5bA.jpg'); /* 새 이미지 URL로 변경 */
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            opacity: 0.6; /* 배경 이미지 투명도 */
+            z-index: -1; /* 컨텐츠 뒤로 보내기 */
+            border-radius: 0.5rem; /* Tailwind rounded-lg 와 일치 */
+        }
+
 
         @media (max-width: 640px) {
             h1 {
@@ -86,7 +108,7 @@
     </style>
 </head>
 <body class="p-2 sm:p-4">
-    <div class="container mx-auto max-w-3xl bg-white shadow-xl rounded-lg p-4 sm:p-6">
+    <div class="container game-container mx-auto max-w-3xl shadow-xl rounded-lg p-4 sm:p-6">
         <header class="text-center mb-6">
             <h1 class="text-2xl sm:text-3xl font-bold text-purple-600">⭐ 정글왕 정글#KR9의 운명의 사다리 ⭐</h1>
         </header>
@@ -99,7 +121,7 @@
                 </div>
                 <div>
                     <label for="resultsInput" class="block text-sm font-medium text-gray-700 mb-1">결과/벌칙 (한 줄에 한 명)</label>
-                    <textarea id="resultsInput" rows="4" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 text-sm sm:text-base" placeholder="예시)&#10;결과A&#10;결과B&#10;결과C"></textarea>
+                    <textarea id="resultsInput" rows="4" class="w-full p-2 border border-gray-300 rounded-md shadow-sm focus:ring-purple-500 focus:border-purple-500 text-sm sm:text-base" placeholder="예시)&#10;1&#10;2&#10;3"></textarea>
                 </div>
             </div>
 
@@ -177,7 +199,7 @@
         const historyModal = document.getElementById('historyModal'); 
         const historyContent = document.getElementById('historyContent');
         const closeHistoryModalBtn = document.getElementById('closeHistoryModalBtn');
-        const clearHistoryBtn = document.getElementById('clearHistoryBtn'); // Clear history button
+        const clearHistoryBtn = document.getElementById('clearHistoryBtn');
 
         const volumeSlider = document.getElementById('volumeControl');
 
@@ -195,8 +217,11 @@
         let explosionAnimationId = null;
         let currentHighlightedPath = null; 
         let toneStarted = false;
-        let melodySynth, explosionSynth, noiseSynth;
+        let explosionSynth, noiseSynth; 
         let textAnimationStates = []; 
+        let ladderBGM; 
+        const ladderBGMSrc = 'https://raw.githubusercontent.com/JungleKing95/Audiofile/main/LADDER%20BGM.mp3';
+
 
         // --- Ladder Configuration ---
         const CANVAS_MIN_WIDTH = 300; 
@@ -218,7 +243,7 @@
         const LINE_THICKNESS = 3; 
         const HIGHLIGHT_THICKNESS = 5;
         const RUNG_MIN_Y_GAP = 20; 
-        const PATH_ANIMATION_DURATION = 2000; 
+        const PATH_ANIMATION_DURATION = 4000; // 0.5배속 (기존 2000)
         const EXPLOSION_DURATION = 500; 
         const TEXT_COLOR_ANIMATION_DURATION = 500;
 
@@ -251,14 +276,62 @@
         function getLineSpacing(cw,pc){return pc<=1?(cw-2*LADDER_INTERNAL_PADDING):(cw-2*LADDER_INTERNAL_PADDING)/(pc-1);}
         function getLineX(li,ls){return LADDER_INTERNAL_PADDING+li*ls;}
 
-        // --- Sound Synthesis (Tone.js) ---
-        function initializeSynths(){if(!melodySynth)melodySynth=new Tone.PolySynth(Tone.Synth,{oscillator:{type:"pulse",width:0.4},envelope:{attack:0.01,decay:0.2,sustain:0.1,release:0.2},volume:-10}).toDestination();if(!explosionSynth)explosionSynth=new Tone.MembraneSynth({pitchDecay:0.08,octaves:3,oscillator:{type:"sine"},envelope:{attack:0.001,decay:0.5,sustain:0.01,release:0.5,attackCurve:"exponential"},volume:-5}).toDestination();if(!noiseSynth)noiseSynth=new Tone.NoiseSynth({noise:{type:'white'},envelope:{attack:0.005,decay:0.1,sustain:0},volume:-15}).toDestination();}
-        let soundInterval=null,melodyNotes=['C5','E5','G5','C6','G5','E5','C5','D5','F5','A5','C6','A5','F5','D5'],currentMelodyNoteIndex=0;
-        function playLadderSound(){if(!toneStarted||!melodySynth||pathAnimationId===null)return;stopLadderSound();currentMelodyNoteIndex=0;const nd='16n',it=Tone.Time(nd).toMilliseconds()*1.2;soundInterval=setInterval(()=>{if(pathAnimationId===null){stopLadderSound();return;}const n=melodyNotes[currentMelodyNoteIndex%melodyNotes.length];melodySynth.triggerAttackRelease(n,nd);currentMelodyNoteIndex++;},it);}
-        function stopLadderSound(){if(soundInterval){clearInterval(soundInterval);soundInterval=null;}if(melodySynth){melodySynth.releaseAll();}}
+        // --- Sound Synthesis (Tone.js for effects, HTML Audio for BGM) ---
+        function initializeSynths(){ 
+            if(!explosionSynth)explosionSynth=new Tone.MembraneSynth({pitchDecay:0.08,octaves:3,oscillator:{type:"sine"},envelope:{attack:0.001,decay:0.5,sustain:0.01,release:0.5,attackCurve:"exponential"},volume:-5}).toDestination();
+            if(!noiseSynth)noiseSynth=new Tone.NoiseSynth({noise:{type:'white'},envelope:{attack:0.005,decay:0.1,sustain:0},volume:-15}).toDestination();
+        }
+        
+        function playLadderBGM(){
+            if (!ladderBGM) return;
+            ladderBGM.currentTime = 0;
+            ladderBGM.play().catch(error => console.error("Error playing BGM:", error));
+        }
+
+        function stopLadderBGM(){
+            if (ladderBGM) {
+                ladderBGM.pause();
+            }
+        }
+
         function playExplosionSound(){if(!toneStarted||!explosionSynth||!noiseSynth)return;const nw=Tone.now();explosionSynth.triggerAttackRelease("C2","8n",nw);noiseSynth.triggerAttackRelease("16n",nw+0.02);}
-        async function startToneContext(){if(!toneStarted){try{await Tone.start();initializeSynths();toneStarted=true;console.log("Audio Context started");Tone.Master.volume.value=(parseFloat(volumeSlider.value)/100)*30-30;}catch(e){console.error("Error starting Tone.js:",e);}}}
-        if(volumeSlider)volumeSlider.addEventListener('input',(e)=>{if(toneStarted)Tone.Master.volume.value=(e.target.value/100)*30-30;});
+        
+        async function startToneContext(){
+            if(!toneStarted){
+                try{
+                    await Tone.start();
+                    initializeSynths(); 
+                    toneStarted=true;
+                    console.log("Audio Context started");
+                    
+                    if (!ladderBGM) {
+                        ladderBGM = new Audio(ladderBGMSrc);
+                        ladderBGM.loop = true;
+                        const initialSliderValue = parseFloat(volumeSlider.value);
+                        ladderBGM.volume = initialSliderValue / 100;
+                        Tone.Master.volume.value = (initialSliderValue / 100) * 30 - 30; 
+                    }
+
+                } catch(e){
+                    console.error("Error starting Audio systems:",e);
+                }
+            }
+        }
+
+        if(volumeSlider) {
+            volumeSlider.addEventListener('input',(e)=>{
+                const newVolumePercent = parseFloat(e.target.value);
+                const newVolumeDecimal = newVolumePercent / 100;
+                
+                if(ladderBGM) {
+                    ladderBGM.volume = newVolumeDecimal;
+                }
+                if (toneStarted) { 
+                    Tone.Master.volume.value = (newVolumePercent / 100) * 30 - 30; 
+                }
+            });
+        }
+
 
         // --- Text Color Animation ---
         function startTextColorAnimation(idx,type,targetHex,duration,onComplete=()=>{}){const id=`${type}-${idx}-${Date.now()}`;textAnimationStates=textAnimationStates.filter(a=>!(a.index===idx&&a.type===type));textAnimationStates.push({id,index:idx,type,startTime:performance.now(),duration,startColor:TEXT_COLOR_HEX,targetColor:targetHex,onComplete});function animate(now){const anim=textAnimationStates.find(a=>a.id===id);if(!anim)return;const el=now-anim.startTime,prog=Math.min(el/anim.duration,1);drawLadderBase();if(prog<1)requestAnimationFrame(animate);else{textAnimationStates=textAnimationStates.filter(a=>a.id!==id);anim.onComplete();drawLadderBase();}}requestAnimationFrame(animate);}
@@ -275,7 +348,8 @@
         // --- Animation Functions ---
         function animatePath(pathToAnimate, onComplete){ 
             if(pathToAnimate.length<2){if(onComplete)onComplete();return;}
-            pathAnimationId=-1;playLadderSound();let st=null;const ns=pathToAnimate.length-1;
+            pathAnimationId=-1; playLadderBGM(); 
+            let st=null;const ns=pathToAnimate.length-1;
             function step(ts){
                 if(!st)st=ts;const el=ts-st,prog=Math.min(el/PATH_ANIMATION_DURATION,1);
                 drawLadderBase();
@@ -285,7 +359,8 @@
                 for(let i=0;i<ns;i++){const p1=pathToAnimate[i],p2=pathToAnimate[i+1];if(i<Math.floor(tpltd))ctx.lineTo(p2.x,p2.y);else if(i===Math.floor(tpltd)){const sp=tpltd-Math.floor(tpltd);ctx.lineTo(p1.x+(p2.x-p1.x)*sp,p1.y+(p2.y-p1.y)*sp);break;}else break;}
                 ctx.stroke();
                 if(prog<1)pathAnimationId=requestAnimationFrame(step);
-                else{pathAnimationId=null;stopLadderSound();drawLadderBase(); 
+                else{pathAnimationId=null; stopLadderBGM(); 
+                    drawLadderBase(); 
                     ctx.strokeStyle=HIGHLIGHT_PATH_COLOR;ctx.lineWidth=HIGHLIGHT_THICKNESS; 
                     ctx.beginPath();ctx.moveTo(pathToAnimate[0].x,pathToAnimate[0].y);
                     for(let i=1;i<pathToAnimate.length;i++)ctx.lineTo(pathToAnimate[i].x,pathToAnimate[i].y);
@@ -318,7 +393,6 @@
                     explosionAnimationId=requestAnimationFrame(step);
                 } else {
                     explosionAnimationId=null;
-                    // No longer setting isAnimating = false here. It's managed by the calling sequence.
                     drawLadderBase(); 
                     if(currentHighlightedPath){ 
                          ctx.strokeStyle=HIGHLIGHT_PATH_COLOR;ctx.lineWidth=HIGHLIGHT_THICKNESS;
@@ -332,7 +406,13 @@
             explosionAnimationId=requestAnimationFrame(step);
         }
 
-        function stopAllAnimations(){if(pathAnimationId)cancelAnimationFrame(pathAnimationId);if(explosionAnimationId)cancelAnimationFrame(explosionAnimationId);textAnimationStates=[];pathAnimationId=null;explosionAnimationId=null;isAnimating=false;stopLadderSound();}
+        function stopAllAnimations(){
+            if(pathAnimationId)cancelAnimationFrame(pathAnimationId);
+            if(explosionAnimationId)cancelAnimationFrame(explosionAnimationId);
+            textAnimationStates=[];
+            pathAnimationId=null;explosionAnimationId=null;isAnimating=false;
+            stopLadderBGM(); 
+        }
 
         // --- Canvas Setup and Event Handling ---
         function setupCanvas(){updateCalculatedDimensions();const cw=ladderCanvas.parentElement.clientWidth;ladderCanvas.width=Math.max(CANVAS_MIN_WIDTH,cw);ladderCanvas.height=totalCanvasHeight;}
@@ -467,9 +547,8 @@
         resetBtn.addEventListener('click', () => {
             stopAllAnimations();
             participantsInput.value = "메\n로\n모\n미\n붕"; 
-            resultsInput.value = "결과A\n결과B\n결과C\n결과D\n결과E";
+            resultsInput.value = "1\n2\n3\n4\n5"; // 변경된 기본값
             participants = []; results = []; numPlayers = 0; rungs = []; calculatedPaths = [];
-            // gameHistory = []; // History is not cleared on general reset, only via specific button
             currentHighlightedPath = null; errorMessage.textContent = ''; connectionMessage.textContent = '';
             setupCanvas(); ctx.clearRect(0,0,ladderCanvas.width,ladderCanvas.height);
         });
@@ -499,8 +578,6 @@
         clearHistoryBtn.addEventListener('click', () => {
             gameHistory = [];
             historyContent.textContent = '플레이 히스토리가 없습니다.';
-            // Optionally, keep the modal open or close it:
-            // historyModal.classList.remove('active'); 
         });
         closeHistoryModalBtn.addEventListener('click', () => historyModal.classList.remove('active'));
         historyModal.addEventListener('click', (event) => {
@@ -515,7 +592,7 @@
         // --- Initial Setup ---
         setupCanvas(); 
         participantsInput.value = "메\n로\n모\n미\n붕";
-        resultsInput.value = "결과A\n결과B\n결과C\n결과D\n결과E";
+        resultsInput.value = "1\n2\n3\n4\n5"; // 변경된 기본값
         if(volumeSlider)volumeSlider.value="80";
         drawLadderBase();
 
